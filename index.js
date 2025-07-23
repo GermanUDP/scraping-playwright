@@ -1,38 +1,48 @@
-const { chromium } = require('playwright');
-const XLSX = require('xlsx');
+// Importación de bibliotecas necesarias
+const { chromium } = require('playwright'); // Framework para automatización de navegadores
+const XLSX = require('xlsx'); // Biblioteca para manejar archivos Excel
 
-
+// ==============================================
+// FUNCIÓN PARA EMULAR COMPORTAMIENTO HUMANO
+// ==============================================
 async function emulateHuman(page) {
-  // Versión extremadamente rápida (solo lo esencial)
-  await page.mouse.move(100, 200, { steps: 3 });
-  await page.waitForTimeout(200 + Math.random() * 300); // 200-500ms
+  // Versión optimizada para velocidad (movimientos mínimos)
+  await page.mouse.move(100, 200, { steps: 3 }); // Mueve el mouse en 3 pasos
+  await page.waitForTimeout(200 + Math.random() * 300); // Espera aleatoria entre 200-500ms
 }
 
-
+// ==============================================
+// FUNCIÓN PRINCIPAL DE SCRAPING
+// ==============================================
 async function scrapeData(url, tienda, rowData) {
+  // Validación básica de URL
   if (!url) return;
 
-
+  // ==============================================
+  // CONFIGURACIÓN DEL NAVEGADOR
+  // ==============================================
   const browser = await chromium.launch({
-    headless: false,
-    args: ['--disable-blink-features=AutomationControlled'],
+    headless: false, // Modo con interfaz gráfica para debugging
+    args: ['--disable-blink-features=AutomationControlled'], // Deshabilita detección de automatización
   });
 
-
+  // Configuración del contexto del navegador
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 720 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    viewport: { width: 1280, height: 720 }, // Tamaño de ventana estándar
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', // User-Agent común
   });
 
-
+  // Creación de una nueva pestaña/página
   const page = await context.newPage();
-
 
   try {
     console.log(`Extrayendo datos de ${tienda}...`);
+    // Navegación a la URL con timeout de 60 segundos
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-
+    // ==============================================
+    // DETECCIÓN DE CAPTCHA
+    // ==============================================
     const captchaSelector = '#g-recaptcha, .captcha-box, .recaptcha-checkbox';
     if (await page.$(captchaSelector)) {
       console.log(`Se detectó un CAPTCHA en ${tienda}, omitiendo esta URL.`);
@@ -40,15 +50,22 @@ async function scrapeData(url, tienda, rowData) {
       return;
     }
 
-
+    // Emulación de comportamiento humano
     await emulateHuman(page);
 
-
+    // Variables para almacenar datos extraídos
     let nombre = '', precio = '', precioTarjeta = '';
-    const EXTRACTION_TIMEOUT = 10000; // 10 segundos para extracción
+    const EXTRACTION_TIMEOUT = 10000; // Timeout de 10 segundos para extracción
 
+    // ==============================================
+    // LÓGICA ESPECÍFICA POR TIENDA
+    // ==============================================
 
+    // --------------------------
+    // FALABELLA
+    // --------------------------
     if (tienda === 'Falabella') {
+      // Verificación de producto agotado
       const agotadoSelector = '#testId-product-outofstock > div > div > h2';
       if (await page.$(agotadoSelector)) {
         console.log('Producto agotado en Falabella, indicando en la hoja de cálculo.');
@@ -57,12 +74,15 @@ async function scrapeData(url, tienda, rowData) {
         return;
       }
      
+      // Extracción del nombre del producto
       nombre = await page.textContent('.product-name-wrapper h1').catch(() => '');
      
-      // Usando Promise.race para implementar timeout
+      // Extracción de precios con timeout
       const getPrecios = async () => {
+        // Selectores alternativos para precio normal
         const precioNormalSelector = await page.$('li.prices-1 span.copy17.primary.senary.bold.line-height-29') ||
                                    await page.$('li.prices-0 span.copy12.primary.senary.bold.line-height-29');
+        // Selector para precio con tarjeta
         const precioTarjetaSelector = await page.$('li.prices-0 span.copy12.primary.high.jsx-2835692965.normal.line-height-29');
        
         precio = precioNormalSelector ? await precioNormalSelector.textContent() : '';
@@ -74,9 +94,12 @@ async function scrapeData(url, tienda, rowData) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al extraer precios en Falabella')), EXTRACTION_TIMEOUT))
       ]).catch(e => console.log(e.message));
 
-
+    // --------------------------
+    // PARIS
+    // --------------------------
     } else if (tienda === 'Paris') {
       try {
+        // Objeto con selectores CSS para diferentes escenarios de precios
         const selectores = {
           normalConTarjeta: 'body > div.flex.flex-col.gap-6.tablet_w\\:gap-4.desktop\\:gap-6.tablet_w\\:px-6.desktop\\:px-16.tablet_w\\:pt-4.desktop\\:pt-6.bg-neutral-100.max-w-\\[1536px\\].m-auto > div.flex.gap-6.flex-col.tablet_w\\:flex-row > div.flex.flex-col.gap-8.border.border-neutral-300.bg-white.rounded-2xl.p-4.shrink-0.tablet_w\\:w-\\[420px\\] > div.flex.flex-col.gap-4 > div.flex.flex-col.gap-1 > div:nth-child(2) > h2',
           soloNormal: 'body > div.flex.flex-col.gap-6.tablet_w\\:gap-4.desktop\\:gap-6.tablet_w\\:px-6.desktop\\:px-16.tablet_w\\:pt-4.desktop\\:pt-6.bg-neutral-100.max-w-\\[1536px\\].m-auto > div.flex.gap-6.flex-col.tablet_w\\:flex-row > div.flex.flex-col.gap-8.border.border-neutral-300.bg-white.rounded-2xl.p-4.shrink-0.tablet_w\\:w-\\[420px\\] > div.flex.flex-col.gap-4 > div.flex.flex-col.gap-1 > div > h2',
@@ -85,11 +108,13 @@ async function scrapeData(url, tienda, rowData) {
        
         await Promise.race([
           (async () => {
+            // Verifica si hay precio normal y con tarjeta
             const precioConTarjeta = await page.$(selectores.normalConTarjeta);
             if (precioConTarjeta) {
               precio = await page.textContent(selectores.normalConTarjeta);
               precioTarjeta = await page.textContent(selectores.tarjeta);
             } else {
+              // Solo precio normal
               precio = await page.textContent(selectores.soloNormal);
               precioTarjeta = '';
             }
@@ -98,13 +123,15 @@ async function scrapeData(url, tienda, rowData) {
         ]);
       } catch (error) {
         console.log(`Error en Paris: ${error.message}`);
-        //await page.screenshot({ path: `paris-error-${Date.now()}.png` });
         precio = '';
         precioTarjeta = '';
       }
 
-
+    // --------------------------
+    // RIPLEY
+    // --------------------------
     } else if (tienda === 'Ripley') {
+      // Verificación de producto agotado
       const agotadoSelector = 'body > div.container > div.error-page-container > div > h2';
       if (await page.$(agotadoSelector)) {
         console.log('Producto agotado en Ripley, indicando en la hoja de cálculo.');
@@ -113,17 +140,21 @@ async function scrapeData(url, tienda, rowData) {
         return;
       }
    
+      // Extracción del nombre del producto
       nombre = await page.textContent('.product-header.hidden-xs h1').catch(() => '');
    
       try {
         await Promise.race([
           (async () => {
+            // Intenta obtener precio con tarjeta primero
             const precioTarjetaSelector = await page.$('#row > div.col-xs-12.col-sm-12.col-md-5 > section:nth-child(2) > dl > div.product-price-container.product-ripley-price > dt');
             if (precioTarjetaSelector) {
               precioTarjeta = await precioTarjetaSelector.textContent();
+              // Luego intenta obtener precio normal
               const precioNormalSelector = await page.$('#row > div.col-xs-12.col-sm-12.col-md-5 > section:nth-child(2) > dl > div.product-price-container.product-internet-price-not-best > dt');
               precio = precioNormalSelector ? await precioNormalSelector.textContent() : '';
             } else {
+              // Solo precio normal
               const precioNormalSelector = await page.$('.product-price-container.product-internet-price dt');
               precio = precioNormalSelector ? await precioNormalSelector.textContent() : '';
             }
@@ -136,8 +167,11 @@ async function scrapeData(url, tienda, rowData) {
         precioTarjeta = '';
       }
 
-
+    // --------------------------
+    // MERCADO LIBRE
+    // --------------------------
     } else if (tienda === 'Mercado Libre') {
+      // Verificación de producto agotado
       const agotadoSelector = '#ui-pdp-main-container div.ui-pdp-message--warning';
       const agotadoElement = await page.$(agotadoSelector);
      
@@ -151,10 +185,12 @@ async function scrapeData(url, tienda, rowData) {
       try {
         await Promise.race([
           (async () => {
+            // Extracción del nombre con selectores alternativos
             nombre = await page.textContent('#ui-pdp-main-container h1.ui-pdp-title').catch(() =>
               page.textContent('#ui-pdp-main-container > div.ui-pdp-container__col.col-3.ui-pdp-container--column-center.pb-40 > div > div.ui-pdp-container__row.ui-pdp-with--separator--fluid.ui-pdp-with--separator--40-24 > div.ui-pdp-container__col.col-2.mr-24.mt-8 > div.ui-pdp-container__top-wrapper.mt-40 > div > div.ui-pdp-header__title-container > h1').catch(() => '')
             );
            
+            // Extracción del precio con selectores alternativos
             precio = await page.textContent('div.ui-pdp-price__second-line span.andes-money-amount__fraction').catch(() =>
               page.textContent('#price > div > div.ui-pdp-price__main-container > div.ui-pdp-price__second-line > span > span > span.andes-money-amount__fraction').catch(() => '')
             );
@@ -166,8 +202,11 @@ async function scrapeData(url, tienda, rowData) {
         precio = '';
       }
 
-
+    // --------------------------
+    // LIDER
+    // --------------------------
     } else if (tienda === 'Lider') {
+      // Verificación de producto agotado
       const agotadoSelector = '#maincontent > section > main > div.flex.flex-column.h-100 > div:nth-child(2) > div > div.w_8XBa.w_n9r1.w_yr8k > div > div:nth-child(2) > div > div > section:nth-child(6) > div > div.f4.light-gray > div > div > div > div.flex-auto > div > div';
       if (await page.$(agotadoSelector)) {
         console.log('Producto agotado en Lider, indicando en la hoja de cálculo.');
@@ -176,9 +215,11 @@ async function scrapeData(url, tienda, rowData) {
         return;
       }
    
+      // Extracción del nombre
       nombre = await page.textContent('#main-title').catch(() => '');
    
       try {
+        // Espera explícita por el selector de precio
         await page.waitForSelector('span.b.lh-copy.dark-gray.f1.mr2 span.inline-flex.flex-column span', { timeout: EXTRACTION_TIMEOUT });
         precio = await page.textContent('span.b.lh-copy.dark-gray.f1.mr2 span.inline-flex.flex-column span');
       } catch (error) {
@@ -186,8 +227,11 @@ async function scrapeData(url, tienda, rowData) {
         precio = '';
       }
 
-
+    // --------------------------
+    // SODIMAC
+    // --------------------------
     } else if (tienda === 'Sodimac') {
+      // Verificación de producto agotado
       const agotadoSelector = '#testId-product-outofstock > div > div > h2';
       if (await page.$(agotadoSelector)) {
         console.log('Producto agotado en Sodimac, indicando en la hoja de cálculo.');
@@ -196,19 +240,23 @@ async function scrapeData(url, tienda, rowData) {
         return;
       }
    
+      // Extracción del nombre
       nombre = await page.textContent('.product-name-wrapper h1').catch(() => '');
    
       try {
         await Promise.race([
           (async () => {
+            // Espera por los selectores de precios
             await page.waitForSelector('ol > li', { timeout: EXTRACTION_TIMEOUT });
            
+            // Múltiples selectores para manejar diferentes estructuras de precios
             const precioNormalConTarjetaSelector1 = 'ol > li.prices-1 > div > span.copy17.primary.senary.bold.line-height-29';
             const precioNormalConTarjetaSelector2 = 'ol > li.prices-1 > div > span.copy17.primary.senary.jsx-2835692965.bold.line-height-29';
             const precioTarjetaSelector = 'ol > li.prices-0 > div > span.copy12.primary.high.jsx-2835692965.normal.line-height-29';
             const precioNormalSinTarjetaSelector1 = 'ol > li.prices-0 > div > span.copy12.primary.senary.jsx-2835692965.bold.line-height-29';
             const precioNormalSinTarjetaSelector2 = 'ol > li > div > span.copy12.primary.senary.jsx-2835692965.bold.line-height-29';
            
+            // Intenta encontrar el precio normal con diferentes selectores
             let precioNormalElement = await page.$(precioNormalConTarjetaSelector1) || await page.$(precioNormalConTarjetaSelector2);
             if (!precioNormalElement) {
               precioNormalElement = await page.$(precioNormalSinTarjetaSelector1) || await page.$(precioNormalSinTarjetaSelector2);
@@ -216,6 +264,7 @@ async function scrapeData(url, tienda, rowData) {
            
             precio = precioNormalElement ? await precioNormalElement.textContent() : '';
            
+            // Intenta encontrar precio con tarjeta
             const precioTarjetaElement = await page.$(precioTarjetaSelector);
             precioTarjeta = precioTarjetaElement ? await precioTarjetaElement.textContent() : '';
           })(),
@@ -228,13 +277,17 @@ async function scrapeData(url, tienda, rowData) {
       }
     }
 
-
+    // ==============================================
+    // ALMACENAMIENTO DE RESULTADOS
+    // ==============================================
     if (!rowData.nombre && nombre) rowData.nombre = nombre;
     rowData[tienda] = precio;
     if (precioTarjeta) rowData[`T ${tienda}`] = precioTarjeta;
+    
   } catch (error) {
     console.error(`Error al extraer datos de ${tienda}: ${error.message}`);
   } finally {
+    // Cierre del navegador (se ejecuta siempre, haya o no error)
     await browser.close();
   }
 }
@@ -261,7 +314,7 @@ function setupKeyListener() {
   });
 }
 
-
+//Funcion para obtener fecha y hora local formateada
 function getLocalDateTime() {
   const now = new Date();
   const pad = num => num.toString().padStart(2, '0');
@@ -287,7 +340,7 @@ async function main() {
   let filasConPriceIndex = 0;
   let productosDescompetitivosGlobal = 0;
   let productosQuebrados = 0;
-  let productosDescompetitivosTarjeta = 0; // Nuevo contador para Price Index Tarjeta
+  let productosDescompetitivosTarjeta = 0;
 
   // Función para convertir texto a número de manera segura
   function safeNumberConvert(value) {
@@ -325,7 +378,7 @@ async function main() {
       'Price Index TMP': '',
       'Mínimo Tarjeta': '',
       'Ganador Tarjeta': '',
-      'Price Index Tarjeta': '' // Nueva columna
+      'Price Index Tarjeta': ''
     };
    
     const tiendas = ['Falabella', 'Paris', 'Ripley', 'Mercado Libre', 'Lider', 'Sodimac'];
@@ -489,7 +542,7 @@ async function main() {
         v: tienda
       };
 
-      // ========= [CORRECCIÓN] Cálculo de Price Index Tarjeta ========= //
+      // ========= Cálculo de Price Index Tarjeta ========= //
       // Tomamos el precio de Falabella (normal o tarjeta, el que exista)
       const precioFalabellaTarjeta = safeNumberConvert(rowData['T Falabella']?.v) || 
                                safeNumberConvert(rowData['Falabella']?.v);
@@ -541,7 +594,7 @@ async function main() {
   const columnOrder = [
     'KAM', 'seller', 'nombre', 'sku', 
     'Mínimo TMP', 'Ganador TMP', 'Price Index TMP',
-    'Mínimo Tarjeta', 'Ganador Tarjeta', 'Price Index Tarjeta', // Nueva columna agregada aquí
+    'Mínimo Tarjeta', 'Ganador Tarjeta', 'Price Index Tarjeta',
     'Falabella', 'T Falabella', 
     'Paris', 'T Paris',
     'Ripley', 'T Ripley', 
